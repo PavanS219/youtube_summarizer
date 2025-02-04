@@ -1,0 +1,91 @@
+import streamlit as st
+from scrape_youtube import extract_video_id, get_transcript, extract_metadata, download_thumbnail
+from summarize_text import summarize_text
+import os
+import pyttsx3  # Offline text-to-speech
+from gtts import gTTS  # Google text-to-speech (online)
+
+# Function to convert summary to speech
+def text_to_speech(summary, use_offline=True):
+    cleaned_summary = summary.replace("*", "")  # Remove all asterisks
+
+    if use_offline:  # Using pyttsx3 (offline)
+        engine = pyttsx3.init()
+        engine.say(cleaned_summary)
+        engine.runAndWait()
+    else:  # Using gTTS (requires internet)
+        tts = gTTS(text=cleaned_summary, lang="en", slow=False)
+        tts.save("summary_audio.mp3")
+        os.system("start summary_audio.mp3")  # Opens the audio file (Windows)
+
+
+
+# Function to save summaries
+def save_summary(title, summary):
+    with open("saved_summaries.txt", "a", encoding="utf-8") as file:
+        file.write(f"\nTitle: {title}\nSummary: {summary}\n{'-'*50}")
+    st.session_state["summary_saved"] = True  # Track saved state
+
+# Function to display saved summaries
+def display_saved_summaries():
+    if os.path.exists("saved_summaries.txt"):
+        with open("saved_summaries.txt", "r", encoding="utf-8") as file:
+            return file.read()
+    return "No saved summaries yet."
+
+# Initialize session state
+if "summary_saved" not in st.session_state:
+    st.session_state["summary_saved"] = False
+if "summary_text" not in st.session_state:
+    st.session_state["summary_text"] = ""
+
+def main():
+    st.title("YouTube AI Video Summarizer 🎥🤖")
+    
+    # Add a sidebar menu
+    menu = st.sidebar.radio("Navigation", ["Summarize Video", "View Saved Summaries"])
+
+    if menu == "Summarize Video":
+        st.subheader("Enter YouTube URL:")
+        url = st.text_input("Paste YouTube link here")
+
+        language = st.radio("Select language:", ('English', 'Spanish', 'Korean'))
+
+        if st.button("Summarize"):
+            if url:
+                title, channel = extract_metadata(url)
+                st.subheader("Title:")
+                st.write(title)
+                st.subheader("Channel:")
+                st.write(channel)
+
+                download_thumbnail(extract_video_id(url))
+                st.image("thumbnail.jpg", caption='Thumbnail', use_container_width=True)
+
+                transcript = get_transcript(extract_video_id(url))
+                summary = summarize_text(transcript, lang=language)
+                
+                st.session_state["summary_text"] = summary  # Store summary in session state
+                
+            
+
+        # Show summary if available
+        if st.session_state["summary_text"]:
+            
+            st.write(st.session_state["summary_text"])
+
+            # Button to play summary as audio (without refreshing)
+            if st.button("🔊 Listen to Summary", key="listen_summary"):
+                text_to_speech(st.session_state["summary_text"])
+
+            # Button to save summary (without refreshing)
+            if st.button("💾 Save Summary", key="save_summary"):
+                save_summary(title, st.session_state["summary_text"])
+                st.success("Summary saved successfully!")
+
+    elif menu == "View Saved Summaries":
+        st.subheader("📁 Your Saved Summaries:")
+        st.text_area("Summaries:", display_saved_summaries(), height=300)
+
+if __name__ == "__main__":
+    main()
